@@ -1,19 +1,17 @@
 """Stripe webhook handler."""
-import json
 from fastapi import APIRouter, Request, HTTPException, Depends
-from sqlalchemy.orm import Session
+from supabase import Client
 import stripe
 
-from app.database import get_db
+from app.database import get_supabase
 from app.config import settings
-from app.models import StripeEvent
 from app.services.order_service import update_order_status
 
 router = APIRouter(prefix="/stripe", tags=["webhooks"])
 
 
 @router.post("/webhook")
-async def stripe_webhook(request: Request, db: Session = Depends(get_db)):
+async def stripe_webhook(request: Request, supabase: Client = Depends(get_supabase)):
     """Handle Stripe webhook events."""
     payload = await request.body()
     sig_header = request.headers.get("stripe-signature")
@@ -31,23 +29,21 @@ async def stripe_webhook(request: Request, db: Session = Depends(get_db)):
         raise HTTPException(status_code=400, detail=f"Invalid signature: {str(e)}")
     
     # Check idempotency
-    existing_event = db.query(StripeEvent).filter(
-        StripeEvent.stripe_event_id == event.id
-    ).first()
+    result = supabase.table("stripe_events").select("*").eq("stripe_event_id", event.id).execute()
+    existing_event = result.data[0] if result.data else None
     
-    if existing_event and existing_event.processed:
+    if existing_event and existing_event.get("processed"):
         # Already processed, return 200 (idempotent)
         return {"status": "already_processed"}
     
     # Store event
     if not existing_event:
-        stripe_event = StripeEvent(
-            stripe_event_id=event.id,
-            event_type=event.type
-        )
-        db.add(stripe_event)
-        db.commit()
-        db.refresh(stripe_event)
+        event_data = {
+            "stripe_event_id": event.id,
+            "event_type": event.type
+        }
+        result = supabase.table("stripe_events").insert(event_data).execute()
+        stripe_event = result.data[0] if result.data else None
     else:
         stripe_event = existing_event
     
@@ -58,22 +54,23 @@ async def stripe_webhook(request: Request, db: Session = Depends(get_db)):
             customer_email = session.customer_details.email if session.customer_details else None
             
             update_order_status(
-                db,
+                supabase,
                 session.id,
                 "paid",
                 customer_email
             )
         
-        stripe_event.processed = True
+        # Mark event as processed
         from datetime import datetime
-        stripe_event.processed_at = datetime.utcnow()
-        db.commit()
+        supabase.table("stripe_events").update({
+            "processed": True,
+            "processed_at": datetime.utcnow().isoformat()
+        }).eq("id", stripe_event["id"]).execute()
         
     except Exception as e:
         # Log error but don't fail the webhook
         # Stripe will retry
         print(f"Error processing webhook event {event.id}: {str(e)}")
-        db.rollback()
         raise HTTPException(status_code=500, detail=f"Error processing event: {str(e)}")
     
     return {"status": "success"}

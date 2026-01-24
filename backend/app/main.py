@@ -3,7 +3,6 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
-from app.database import init_db
 from app.api import products, checkout, orders, webhooks
 
 app = FastAPI(title="Ecommerce Demo API", version="1.0.0")
@@ -22,12 +21,6 @@ app.include_router(products.router)
 app.include_router(checkout.router)
 app.include_router(orders.router)
 app.include_router(webhooks.router)
-
-
-@app.on_event("startup")
-async def startup_event():
-    """Initialize database on startup."""
-    init_db()
 
 
 @app.get("/")

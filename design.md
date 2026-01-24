@@ -20,9 +20,8 @@ A minimal ecommerce demo application with Stripe integration. The application se
                                       │
                                       ▼
                             ┌─────────────────┐
-                            │   Database      │
-                            │   (PostgreSQL/  │
-                            │    SQLite)      │
+                            │   Supabase      │
+                            │   (PostgreSQL)  │
                             │                 │
                             │ - Products      │
                             │ - Orders        │
@@ -36,8 +35,8 @@ A minimal ecommerce demo application with Stripe integration. The application se
 
 ### Backend
 - **Framework**: FastAPI
-- **Database**: SQLite (dev) / PostgreSQL (production)
-- **ORM**: SQLAlchemy
+- **Database**: Supabase (PostgreSQL)
+- **Database Client**: Supabase Python client
 - **Stripe SDK**: `stripe` Python library
 - **Validation**: Pydantic
 
@@ -59,10 +58,11 @@ A minimal ecommerce demo application with Stripe integration. The application se
 
 ```sql
 CREATE TABLE products (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,  -- or UUID
+    id SERIAL PRIMARY KEY,
     title VARCHAR(255) NOT NULL,
     description TEXT,
-    image_url VARCHAR(512),
+    images JSONB DEFAULT '[]'::jsonb,  -- Array of image URLs (replaces image_url)
+    category VARCHAR(100),  -- New: Product category
     currency VARCHAR(3) NOT NULL DEFAULT 'usd',
     current_price_amount INTEGER NOT NULL,  -- in minor units (cents)
     published BOOLEAN DEFAULT FALSE,
@@ -74,13 +74,14 @@ CREATE TABLE products (
     last_sync_at TIMESTAMP NULL,
     
     -- Metadata
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW(),
     deleted_at TIMESTAMP NULL  -- soft delete
 );
 
 CREATE INDEX idx_products_published ON products(published) WHERE deleted_at IS NULL;
 CREATE INDEX idx_products_stripe_product_id ON products(stripe_product_id);
+CREATE INDEX idx_products_category ON products(category) WHERE deleted_at IS NULL;
 ```
 
 ### Order Table
@@ -146,6 +147,10 @@ CREATE UNIQUE INDEX idx_stripe_events_event_id ON stripe_events(stripe_event_id)
 #### `GET /products`
 **Description**: Get published products for storefront
 
+**Query Parameters**:
+- `category` (optional): Filter by category
+- `search` (optional): Search in title and description
+
 **Response**:
 ```json
 {
@@ -154,7 +159,9 @@ CREATE UNIQUE INDEX idx_stripe_events_event_id ON stripe_events(stripe_event_id)
       "id": 1,
       "title": "Product Name",
       "description": "Description",
-      "image_url": "https://...",
+      "image_url": "https://...",  // Backward compatibility (first image)
+      "images": ["https://...", "https://..."],  // Multiple images
+      "category": "Electronics",  // New field
       "currency": "usd",
       "current_price_amount": 1999,
       "formatted_price": "$19.99"
@@ -166,6 +173,10 @@ CREATE UNIQUE INDEX idx_stripe_events_event_id ON stripe_events(stripe_event_id)
 #### `GET /admin/products`
 **Description**: Get all products (including unpublished) for admin
 
+**Query Parameters**:
+- `category` (optional): Filter by category
+- `search` (optional): Search in title and description
+
 **Response**: Same as above, but includes `published`, `stripe_product_id`, `active_stripe_price_id`, `last_sync_status`, `last_sync_at`
 
 #### `POST /admin/products`
@@ -176,7 +187,8 @@ CREATE UNIQUE INDEX idx_stripe_events_event_id ON stripe_events(stripe_event_id)
 {
   "title": "Product Name",
   "description": "Description",
-  "image_url": "https://...",
+  "images": ["https://...", "https://..."],  // Multiple images
+  "category": "Electronics",  // Optional category
   "currency": "usd",
   "current_price_amount": 1999,
   "published": true
@@ -312,7 +324,9 @@ if event.type == 'checkout.session.completed':
 
 #### Product List Page (`/`)
 - Display grid/list of published products
-- Product card shows: image, title, price, "Add to Cart" button
+- **Search bar**: Search products by title and description (debounced)
+- **Category filter**: Filter products by category with buttons
+- Product card shows: images (carousel if multiple), title, category badge, price, "Add to Cart" button
 - Link to product details (optional)
 
 #### Product Details Page (`/products/{id}`) (Optional)
@@ -355,13 +369,13 @@ if event.type == 'checkout.session.completed':
 - Form fields:
   - Title (required)
   - Description (textarea)
-  - Image URL
+  - Category (text input, optional)
+  - Images (multiple URL inputs with add/remove functionality)
   - Currency (dropdown: USD, EUR, etc.)
   - Price (number input, in major units)
   - Published (toggle)
 - Buttons:
   - "Save" (saves to DB, auto-syncs to Stripe)
-  - "Save & Sync" (explicit sync button)
   - "Cancel"
 
 ---
@@ -513,7 +527,8 @@ stripe_demo/
 
 ```bash
 # Backend
-DATABASE_URL=sqlite:///./app.db  # or postgresql://...
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_KEY=your-service-role-key
 STRIPE_SECRET_KEY=sk_test_...
 STRIPE_PUBLISHABLE_KEY=pk_test_...
 STRIPE_WEBHOOK_SECRET=whsec_...

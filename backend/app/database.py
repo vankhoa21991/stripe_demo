@@ -1,29 +1,11 @@
-"""Database connection and session management."""
-from sqlalchemy import create_engine
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker
-
+"""Supabase client initialization."""
+from supabase import create_client, Client
 from app.config import settings
 
-engine = create_engine(
-    settings.database_url,
-    connect_args={"check_same_thread": False} if "sqlite" in settings.database_url else {}
-)
-
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-
-Base = declarative_base()
+# Initialize Supabase client
+supabase_client: Client = create_client(settings.supabase_url, settings.supabase_key)
 
 
-def get_db():
-    """Dependency for getting database session."""
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
-
-
-def init_db():
-    """Initialize database tables."""
-    Base.metadata.create_all(bind=engine)
+def get_supabase() -> Client:
+    """Dependency for getting Supabase client."""
+    return supabase_client

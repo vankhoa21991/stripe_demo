@@ -9,7 +9,9 @@ class ProductBase(BaseModel):
     """Base product schema."""
     title: str = Field(..., min_length=1, max_length=255)
     description: Optional[str] = None
-    image_url: Optional[str] = None
+    image_url: Optional[str] = None  # Backward compatibility
+    images: Optional[List[str]] = Field(default_factory=list)  # Multiple images
+    category: Optional[str] = None
     currency: str = Field(default="usd", max_length=3)
     current_price_amount: int = Field(..., gt=0)  # in minor units (cents)
     published: bool = False
@@ -24,7 +26,9 @@ class ProductUpdate(BaseModel):
     """Schema for updating a product."""
     title: Optional[str] = Field(None, min_length=1, max_length=255)
     description: Optional[str] = None
-    image_url: Optional[str] = None
+    image_url: Optional[str] = None  # Backward compatibility
+    images: Optional[List[str]] = None  # Multiple images
+    category: Optional[str] = None
     currency: Optional[str] = Field(None, max_length=3)
     current_price_amount: Optional[int] = Field(None, gt=0)
     published: Optional[bool] = None
@@ -40,6 +44,7 @@ class ProductResponse(ProductBase):
     created_at: datetime
     updated_at: datetime
     formatted_price: Optional[str] = None  # Added for display convenience
+    images: List[str] = Field(default_factory=list)  # Override to ensure it's always a list
     
     class Config:
         from_attributes = True
@@ -49,6 +54,7 @@ class ProductPublic(ProductBase):
     """Public product schema (for storefront, excludes admin fields)."""
     id: int
     formatted_price: str  # e.g., "$19.99"
+    images: List[str] = Field(default_factory=list)  # Override to ensure it's always a list
     
     class Config:
         from_attributes = True

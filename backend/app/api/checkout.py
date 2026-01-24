@@ -1,8 +1,8 @@
 """Checkout API endpoints."""
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
+from supabase import Client
 
-from app.database import get_db
+from app.database import get_supabase
 from app.config import settings
 from app.schemas import CheckoutSessionRequest, CheckoutSessionResponse
 from app.services.order_service import create_order_from_checkout
@@ -12,26 +12,23 @@ router = APIRouter(prefix="/checkout", tags=["checkout"])
 
 
 @router.post("/session", response_model=CheckoutSessionResponse)
-def create_checkout(checkout_data: CheckoutSessionRequest, db: Session = Depends(get_db)):
+def create_checkout(checkout_data: CheckoutSessionRequest, supabase: Client = Depends(get_supabase)):
     """Create Stripe Checkout Session."""
     # Build line items for Stripe
     line_items = []
     for item in checkout_data.items:
-        from app.models import Product
-        product = db.query(Product).filter(
-            Product.id == item.product_id,
-            Product.deleted_at.is_(None),
-            Product.published == True
-        ).first()
+        result = supabase.table("products").select("*").eq("id", item.product_id).is_("deleted_at", "null").eq("published", True).execute()
         
-        if not product:
+        if not result.data:
             raise HTTPException(status_code=404, detail=f"Product {item.product_id} not found or not published")
         
-        if not product.active_stripe_price_id:
+        product = result.data[0]
+        
+        if not product.get("active_stripe_price_id"):
             raise HTTPException(status_code=400, detail=f"Product {item.product_id} has no active Stripe price")
         
         line_items.append({
-            "price": product.active_stripe_price_id,
+            "price": product["active_stripe_price_id"],
             "quantity": item.quantity,
         })
     
@@ -47,7 +44,7 @@ def create_checkout(checkout_data: CheckoutSessionRequest, db: Session = Depends
     
     # Create order in DB
     try:
-        create_order_from_checkout(db, checkout_data.items, session.id)
+        create_order_from_checkout(supabase, checkout_data.items, session.id)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     
