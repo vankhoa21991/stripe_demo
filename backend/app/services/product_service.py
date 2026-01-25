@@ -1,8 +1,14 @@
 """Product service for business logic."""
-from typing import List, Optional
+import logging
+import time
+from typing import List, Optional, Callable
 from supabase import Client
+from httpx import WriteError, ReadError, ConnectError
 from app.schemas import ProductCreate, ProductUpdate
 from app.services.stripe_sync import sync_product_to_stripe
+from app.database import reset_supabase_client, get_supabase
+
+logger = logging.getLogger(__name__)
 
 
 def format_price(amount: int, currency: str = "usd") -> str:
@@ -117,39 +123,84 @@ def delete_product(supabase: Client, product_id: int) -> bool:
     return True
 
 
+def _execute_with_retry(supabase: Client, operation_name: str, operation_func: Callable, get_client_func: Optional[Callable] = None):
+    """Execute a Supabase operation with retry logic for connection errors.
+    
+    Args:
+        supabase: The Supabase client instance
+        operation_name: Name of the operation for logging
+        operation_func: Function that executes the operation (takes supabase client as parameter)
+        get_client_func: Optional function to get a fresh client (defaults to get_supabase)
+    """
+    max_retries = 3
+    retry_delay = 1.0
+    current_client = supabase
+    get_client = get_client_func or get_supabase
+    
+    for attempt in range(max_retries):
+        try:
+            return operation_func(current_client)
+        except (WriteError, ReadError, ConnectError, Exception) as e:
+            error_type = type(e).__name__
+            if attempt < max_retries - 1:
+                logger.warning(
+                    f"{operation_name} - Connection error (attempt {attempt + 1}/{max_retries}): "
+                    f"{error_type}: {str(e)}. Retrying in {retry_delay}s..."
+                )
+                time.sleep(retry_delay)
+                retry_delay *= 2  # Exponential backoff
+                
+                # Reset client on connection errors and get a fresh one
+                if isinstance(e, (WriteError, ReadError, ConnectError)):
+                    try:
+                        reset_supabase_client()
+                        current_client = get_client()  # Get fresh client
+                    except Exception as reset_error:
+                        logger.error(f"Failed to reset Supabase client: {reset_error}")
+            else:
+                logger.error(f"{operation_name} - Failed after {max_retries} attempts: {error_type}: {str(e)}")
+                raise
+
+
 def get_products(
     supabase: Client,
     published_only: bool = False,
     category: Optional[str] = None,
     search: Optional[str] = None
 ) -> List[dict]:
-    """Get products, optionally filtered by published status, category, and search."""
-    query = supabase.table("products").select("*").is_("deleted_at", "null")
+    """Get products, optionally filtered by published status, category, and search.
     
-    if published_only:
-        query = query.eq("published", True)
+    Includes retry logic for connection errors.
+    """
+    def _execute_query(client: Client):
+        query = client.table("products").select("*").is_("deleted_at", "null")
+        
+        if published_only:
+            query = query.eq("published", True)
+        
+        if category:
+            query = query.eq("category", category)
+        
+        if search:
+            # Search in title and description using ilike
+            # Supabase doesn't support OR directly, so we filter after fetching
+            # For better performance, we could use full-text search if available
+            pass  # Will filter in Python after fetch
+        
+        result = query.execute()
+        products = result.data if result.data else []
+        
+        # Filter by search term if provided (case-insensitive)
+        if search:
+            search_lower = search.lower()
+            products = [
+                p for p in products
+                if search_lower in (p.get("title") or "").lower() or search_lower in (p.get("description") or "").lower()
+            ]
+        
+        return [_convert_to_product_dict(item) for item in products]
     
-    if category:
-        query = query.eq("category", category)
-    
-    if search:
-        # Search in title and description using ilike
-        # Supabase doesn't support OR directly, so we filter after fetching
-        # For better performance, we could use full-text search if available
-        pass  # Will filter in Python after fetch
-    
-    result = query.execute()
-    products = result.data if result.data else []
-    
-    # Filter by search term if provided (case-insensitive)
-    if search:
-        search_lower = search.lower()
-        products = [
-            p for p in products
-            if search_lower in (p.get("title") or "").lower() or search_lower in (p.get("description") or "").lower()
-        ]
-    
-    return [_convert_to_product_dict(item) for item in products]
+    return _execute_with_retry(supabase, "get_products", _execute_query)
 
 
 def get_product(supabase: Client, product_id: int) -> Optional[dict]:
