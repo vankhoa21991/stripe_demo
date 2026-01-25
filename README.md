@@ -9,12 +9,15 @@ A minimal ecommerce demo application with Stripe integration. The application se
 - **Checkout Flow**: Stripe Checkout for secure payment processing
 - **Order Tracking**: Webhook-based order status updates
 - **Storefront**: Customer-facing product catalog and shopping cart
+- **Product Categories**: Organize products by category with filtering
+- **Search Functionality**: Search products by title and description
+- **Multiple Images**: Support for multiple product images with carousel display
 
 ## Architecture
 
-- **Backend**: FastAPI with SQLAlchemy
+- **Backend**: FastAPI with Supabase
 - **Frontend**: React with TypeScript and Tailwind CSS
-- **Database**: SQLite (dev) / PostgreSQL (production)
+- **Database**: Supabase (PostgreSQL)
 - **Payment**: Stripe Checkout
 
 ## Setup Instructions
@@ -43,10 +46,16 @@ source venv/bin/activate  # On Windows: venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-4. Create a `.env` file:
+4. Create a Supabase project:
+   - Go to https://supabase.com and create a new project
+   - Run the SQL schema from `backend/supabase_schema.sql` in the Supabase SQL Editor
+   - Get your project URL and service role key from Settings > API
+
+5. Create a `.env` file:
 ```bash
-# Database
-DATABASE_URL=sqlite:///./app.db
+# Supabase (get these from your Supabase project settings)
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_KEY=your-service-role-key
 
 # Stripe (get these from your Stripe dashboard)
 STRIPE_SECRET_KEY=sk_test_...

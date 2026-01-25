@@ -15,7 +15,9 @@ export interface Product {
   id: number;
   title: string;
   description: string | null;
-  image_url: string | null;
+  image_url: string | null;  // Backward compatibility
+  images: string[];  // Multiple images
+  category: string | null;
   currency: string;
   current_price_amount: number;
   formatted_price: string;
@@ -57,13 +59,23 @@ export interface Order {
 }
 
 // Product APIs
-export const getProducts = async (): Promise<Product[]> => {
-  const response = await api.get<{ products: Product[] }>('/products');
+export const getProducts = async (category?: string, search?: string): Promise<Product[]> => {
+  const params = new URLSearchParams();
+  if (category) params.append('category', category);
+  if (search) params.append('search', search);
+  const queryString = params.toString();
+  const url = `/products${queryString ? `?${queryString}` : ''}`;
+  const response = await api.get<{ products: Product[] }>(url);
   return response.data.products;
 };
 
-export const getAdminProducts = async (): Promise<Product[]> => {
-  const response = await api.get<Product[]>('/products/admin');
+export const getAdminProducts = async (category?: string, search?: string): Promise<Product[]> => {
+  const params = new URLSearchParams();
+  if (category) params.append('category', category);
+  if (search) params.append('search', search);
+  const queryString = params.toString();
+  const url = `/products/admin${queryString ? `?${queryString}` : ''}`;
+  const response = await api.get<Product[]>(url);
   return response.data;
 };
 

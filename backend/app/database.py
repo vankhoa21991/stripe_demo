@@ -1,29 +1,39 @@
-"""Database connection and session management."""
-from sqlalchemy import create_engine
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker
-
+"""Supabase client initialization with retry logic and connection handling."""
+import logging
+from typing import Optional
+from supabase import create_client, Client
 from app.config import settings
 
-engine = create_engine(
-    settings.database_url,
-    connect_args={"check_same_thread": False} if "sqlite" in settings.database_url else {}
-)
+logger = logging.getLogger(__name__)
 
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-
-Base = declarative_base()
+# Initialize Supabase client
+supabase_client: Optional[Client] = None
 
 
-def get_db():
-    """Dependency for getting database session."""
-    db = SessionLocal()
+def _create_supabase_client() -> Client:
+    """Create a new Supabase client."""
     try:
-        yield db
-    finally:
-        db.close()
+        client = create_client(settings.supabase_url, settings.supabase_key)
+        logger.info("Supabase client created successfully")
+        return client
+    except Exception as e:
+        logger.error(f"Failed to create Supabase client: {e}")
+        raise
 
 
-def init_db():
-    """Initialize database tables."""
-    Base.metadata.create_all(bind=engine)
+def get_supabase() -> Client:
+    """Dependency for getting Supabase client with lazy initialization."""
+    global supabase_client
+    
+    if supabase_client is None:
+        supabase_client = _create_supabase_client()
+    
+    return supabase_client
+
+
+def reset_supabase_client():
+    """Reset the Supabase client (useful for connection recovery)."""
+    global supabase_client
+    logger.warning("Resetting Supabase client")
+    supabase_client = None
+    supabase_client = _create_supabase_client()

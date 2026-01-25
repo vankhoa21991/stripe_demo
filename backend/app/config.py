@@ -1,15 +1,13 @@
 """Configuration management using environment variables."""
-import os
-from typing import Optional
-
 from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
     """Application settings."""
     
-    # Database
-    database_url: str = "sqlite:///./app.db"
+    # Supabase
+    supabase_url: str
+    supabase_key: str  # Service role key for backend
     
     # Stripe
     stripe_secret_key: str
@@ -22,6 +20,7 @@ class Settings(BaseSettings):
     class Config:
         env_file = ".env"
         case_sensitive = False
+        extra = "ignore"  # Ignore extra fields in .env (like old database_url)
 
 
 settings = Settings()

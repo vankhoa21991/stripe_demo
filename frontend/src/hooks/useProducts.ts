@@ -2,7 +2,12 @@
 import { useState, useEffect } from 'react';
 import { getProducts, Product } from '../services/api';
 
-export const useProducts = () => {
+interface UseProductsOptions {
+  category?: string;
+  search?: string;
+}
+
+export const useProducts = (options?: UseProductsOptions) => {
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -11,7 +16,7 @@ export const useProducts = () => {
     const fetchProducts = async () => {
       try {
         setLoading(true);
-        const data = await getProducts();
+        const data = await getProducts(options?.category, options?.search);
         setProducts(data);
         setError(null);
       } catch (err) {
@@ -22,7 +27,7 @@ export const useProducts = () => {
     };
 
     fetchProducts();
-  }, []);
+  }, [options?.category, options?.search]);
 
   return { products, loading, error };
 };

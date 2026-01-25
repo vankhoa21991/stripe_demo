@@ -10,13 +10,15 @@ export default function AdminProductEdit() {
   const [formData, setFormData] = useState({
     title: '',
     description: '',
-    image_url: '',
+    images: [] as string[],
+    category: '',
     currency: 'usd',
     current_price_amount: 0,
     published: false,
   });
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [imageInput, setImageInput] = useState(''); // For adding new images
 
   useEffect(() => {
     if (!isNew) {
@@ -29,7 +31,10 @@ export default function AdminProductEdit() {
             setFormData({
               title: product.title,
               description: product.description || '',
-              image_url: product.image_url || '',
+              images: product.images && product.images.length > 0 
+                ? product.images 
+                : (product.image_url ? [product.image_url] : []),
+              category: product.category || '',
               currency: product.currency,
               current_price_amount: product.current_price_amount,
               published: product.published || false,
@@ -45,6 +50,23 @@ export default function AdminProductEdit() {
     }
   }, [id, isNew]);
 
+  const handleAddImage = () => {
+    if (imageInput.trim()) {
+      setFormData({
+        ...formData,
+        images: [...formData.images, imageInput.trim()],
+      });
+      setImageInput('');
+    }
+  };
+
+  const handleRemoveImage = (index: number) => {
+    setFormData({
+      ...formData,
+      images: formData.images.filter((_, i) => i !== index),
+    });
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
@@ -52,9 +74,11 @@ export default function AdminProductEdit() {
     try {
       // formData.current_price_amount is already in cents (input onChange does dollars * 100)
       const priceInCents = Math.round(formData.current_price_amount);
-      const productData = {
+      const productData: any = {
         ...formData,
         current_price_amount: priceInCents,
+        images: formData.images.length > 0 ? formData.images : undefined,
+        category: formData.category || undefined,
       };
 
       if (isNew) {
@@ -114,16 +138,76 @@ export default function AdminProductEdit() {
         </div>
 
         <div>
-          <label htmlFor="image_url" className="block text-sm font-medium text-gray-700 mb-2">
-            Image URL
+          <label htmlFor="category" className="block text-sm font-medium text-gray-700 mb-2">
+            Category
           </label>
           <input
-            type="url"
-            id="image_url"
-            value={formData.image_url}
-            onChange={(e) => setFormData({ ...formData, image_url: e.target.value })}
+            type="text"
+            id="category"
+            value={formData.category}
+            onChange={(e) => setFormData({ ...formData, category: e.target.value })}
+            placeholder="e.g., Electronics, Clothing, Books"
             className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
           />
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            Images
+          </label>
+          <div className="space-y-2">
+            {/* Image input */}
+            <div className="flex gap-2">
+              <input
+                type="url"
+                value={imageInput}
+                onChange={(e) => setImageInput(e.target.value)}
+                placeholder="Enter image URL"
+                className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                onKeyPress={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    handleAddImage();
+                  }
+                }}
+              />
+              <button
+                type="button"
+                onClick={handleAddImage}
+                className="px-4 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300"
+              >
+                Add
+              </button>
+            </div>
+
+            {/* Image list */}
+            {formData.images.length > 0 && (
+              <div className="space-y-2">
+                {formData.images.map((url, index) => (
+                  <div key={index} className="flex items-center gap-2 p-2 bg-gray-50 rounded-md">
+                    <img
+                      src={url}
+                      alt={`Preview ${index + 1}`}
+                      className="w-16 h-16 object-cover rounded"
+                      onError={(e) => {
+                        (e.target as HTMLImageElement).style.display = 'none';
+                      }}
+                    />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm text-gray-600 truncate">{url}</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveImage(index)}
+                      className="px-3 py-1 text-sm text-red-600 hover:text-red-800"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
 
         <div className="grid grid-cols-2 gap-4">
